@@ -159,7 +159,6 @@ Joypad:
 	jr .wait
 
 VBlank:
-; we got 121 cycles left over from the Timer, let's not waste too much here
 	ld c,LOW(rBCPS)
 	ld a,BCPSF_AUTOINC
 	ldh [c],a
@@ -203,7 +202,6 @@ VBlank:
 	
 
 Timer:
-; we only got 212 cycles maximum to do stuff, so make it count
 	push af
 	push bc
 	push hl
@@ -223,7 +221,6 @@ Timer:
 	adc b
 	daa
 	ldh [c],a
-	; +24 cycles (188 cycles left)
 	ld h,HIGH(BeepIntervalsTable)
 	ldh a,[hButtonPress]
 	add a
@@ -231,14 +228,12 @@ Timer:
 	ld a,[hli]
 	ld h,[hl]
 	ld l,a
-	; +12 cycles (176 cycles left)
 	ldh a,[hBeeps]
 	ld b,a
 	add a
 	add b
 	add l
 	ld l,a
-	; +8 cycles (168 cycles left)
 	ldh a,[c]
 	cp [hl]
 	jr nz,.noBeep
@@ -252,7 +247,6 @@ Timer:
 	ldh a,[c]
 	cp [hl]
 	jr nz,.noBeep
-	; +22 cycles (146 cycles left)
 	ld hl,hBeeps
 	inc [hl]
 	inc l
@@ -263,13 +257,11 @@ Timer:
 	inc l
 	inc l
 	ld [hl],$BF
-	; +20 cycles (126 cycles left)
 .noBeep
 	pop hl
 	pop bc
 	pop af
 	reti
-	; +4 cycles (121 cycles left)
 
 
 SECTION "Beep Intervals Table", ROM0,ALIGN[8]
