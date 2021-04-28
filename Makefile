@@ -15,14 +15,20 @@ DEPDIR := dep
 RESDIR := res
 
 # Program constants
-ifneq ($(OS),Windows_NT)
+ifneq ($(shell which rm),)
     # POSIX OSes
     RM_RF := rm -rf
     MKDIR_P := mkdir -p
+    PY :=
+    filesize = echo 'NB_PB$2_BLOCKS equ (' `wc -c $1 | cut -d ' ' -f 1` ' + $2 - 1) / $2'
 else
-    # Windows
+    # Windows outside of a POSIX env (Cygwin, MSYS2, etc.)
+    # We need Powershell to get any sort of decent functionality
+    $(warning Powershell is required to get basic functionality)
     RM_RF := -del /q
     MKDIR_P := -mkdir
+    PY := python
+    filesize = powershell Write-Output $$('NB_PB$2_BLOCKS equ ' + [string] [int] (([IO.File]::ReadAllBytes('$1').Length + $2 - 1) / $2))
 endif
 
 # Shortcut if you want to use a local copy of RGBDS
@@ -30,6 +36,7 @@ RGBDS   :=
 RGBASM  := $(RGBDS)rgbasm
 RGBLINK := $(RGBDS)rgblink
 RGBFIX  := $(RGBDS)rgbfix
+RGBGFX  := $(RGBDS)rgbgfx
 
 ROM = $(BINDIR)/$(ROMNAME).$(ROMEXT)
 
@@ -72,6 +79,57 @@ rebuild:
 	$(MAKE) all
 .PHONY: rebuild
 
+################################################
+#                                              #
+#                GIT SUBMODULES                #
+#                                              #
+################################################
+
+# By default, cloning the repo does not init submodules
+# If that happens, warn the user
+# Note that the real paths aren't used!
+# Since RGBASM fails to find the files, it outputs the raw paths, not the actual ones.
+hardware.inc/hardware.inc:
+	@echo 'hardware.inc is not present; have you initialized submodules?'
+	@echo 'Run `git submodule update --init`, then `make clean`, then `make` again.'
+	@echo 'Tip: to avoid this, use `git clone --recursive` next time!'
+	@exit 1
+
+################################################
+#                                              #
+#                RESOURCE FILES                #
+#                                              #
+################################################
+
+# By default, asset recipes convert files in `res/` into other files in `res/`
+# This line causes assets not found in `res/` to be also looked for in `src/res/`
+# "Source" assets can thus be safely stored there without `make clean` removing them
+VPATH := $(SRCDIR)
+
+$(RESDIR)/%.1bpp: $(RESDIR)/%.png
+	@$(MKDIR_P) $(@D)
+	$(RGBGFX) -d 1 -o $@ $<
+
+# Define how to compress files using the PackBits16 codec
+# Compressor script requires Python 3
+$(RESDIR)/%.pb16: $(RESDIR)/% $(SRCDIR)/tools/pb16.py
+	@$(MKDIR_P) $(@D)
+	$(PY) $(SRCDIR)/tools/pb16.py $< $(RESDIR)/$*.pb16
+
+$(RESDIR)/%.pb16.size: $(RESDIR)/%
+	@$(MKDIR_P) $(@D)
+	$(call filesize,$<,16) > $(RESDIR)/$*.pb16.size
+
+# Define how to compress files using the PackBits8 codec
+# Compressor script requires Python 3
+$(RESDIR)/%.pb8: $(RESDIR)/% $(SRCDIR)/tools/pb8.py
+	@$(MKDIR_P) $(@D)
+	$(PY) $(SRCDIR)/tools/pb8.py $< $(RESDIR)/$*.pb8
+
+$(RESDIR)/%.pb8.size: $(RESDIR)/%
+	@$(MKDIR_P) $(@D)
+	$(call filesize,$<,8) > $(RESDIR)/$*.pb8.size
+
 ###############################################
 #                                             #
 #                 COMPILATION                 #
@@ -96,24 +154,6 @@ $(OBJDIR)/%.o $(DEPDIR)/%.mk: $(SRCDIR)/%.asm
 ifneq ($(MAKECMDGOALS),clean)
 -include $(patsubst $(SRCDIR)/%.asm,$(DEPDIR)/%.mk,$(SRCS))
 endif
-
-################################################
-#                                              #
-#                RESOURCE FILES                #
-#                                              #
-################################################
-
-
-# By default, asset recipes convert files in `res/` into other files in `res/`
-# This line causes assets not found in `res/` to be also looked for in `src/res/`
-# "Source" assets can thus be safely stored there without `make clean` removing them
-VPATH := $(SRCDIR)
-
-# Define how to compress files using the PackBits16 codec
-# Compressor script requires Python 3
-$(RESDIR)/%.pb16: $(SRCDIR)/tools/pb16.py $(RESDIR)/%
-	@$(MKDIR_P) $(@D)
-	$^ $@
 
 # Catch non-existent files
 # KEEP THIS LAST!!

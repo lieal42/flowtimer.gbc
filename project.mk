@@ -10,10 +10,10 @@ PADVALUE := 0xFF
 VERSION := 0
 
 # 4-ASCII letter game ID
-GAMEID := BOIL
+GAMEID := .GBC
 
 # Game title, up to 11 ASCII chars
-TITLE := BOILERPLATE
+TITLE := FLOWTIMER  
 
 # New licensee, 2 ASCII chars
 # Homebrew games FTW!
@@ -34,8 +34,8 @@ MBC := 0x00
 SRAMSIZE := 0x00
 
 # ROM name
-ROMNAME := boilerplate
-ROMEXT  := gb
+ROMNAME := flowtimer
+ROMEXT  := gbc
 
 
 # Compilation parameters, uncomment to apply, comment to cancel
@@ -51,7 +51,7 @@ ASFLAGS += -h
 # Game Boy Color compatible
 # FIXFLAGS += -c
 # Game Boy Color required
-# FIXFLAGS += -C
+FIXFLAGS += -C
 
 # Super Game Boy compatible
 # FIXFLAGS += -s
@@ -63,4 +63,4 @@ ASFLAGS += -h
 # LDFLAGS += -w
 
 # 32k mode
-# LDFLAGS += -t
+LDFLAGS += -t
