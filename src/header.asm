@@ -33,6 +33,7 @@ Crash::
 	jp HandleCrash
 	
 SECTION "VBlank Interrupt", ROM0[$40]
+	ei
 	jp VBlank
 	
 SECTION "Timer Interrupt", ROM0[$50]
@@ -60,8 +61,9 @@ EntryPoint:
 	ldh [rLCDC],a
 	ldh [rSCY],a
 	ldh [rSCX],a
-	ldh [hBeeps],a
 	ldh [hButtonPress],a
+	ldh [hBeeps],a
+	ldh [hFlashCooldown],a
 	ldh [hTime],a
 	ldh [hTime+1],a
 	ldh [hTime+2],a
@@ -82,6 +84,33 @@ EntryPoint:
 	bit 7,a
 	jr nz,Joypad
 	stop $69 ; nice speed switch
+	ld a,HIGH(FontTiles)
+	ldh [rHDMA1],a
+	xor a
+	ldh [rHDMA4],a
+	ldh [rHDMA2],a
+	ld a,HIGH(_VRAM8000)
+	ldh [rHDMA3],a
+	dec a
+	ldh [rHDMA5],a
+	ld a,HIGH(FontTiles+$800)
+	ldh [rHDMA1],a
+	xor a
+	ldh [rHDMA4],a
+	ldh [rHDMA2],a
+	ld a,HIGH(_VRAM8800)
+	ldh [rHDMA3],a
+	ld a,$7F
+	ldh [rHDMA5],a
+	ld a,HIGH(DefaultSCRN0)
+	ldh [rHDMA1],a
+	xor a
+	ldh [rHDMA4],a
+	ldh [rHDMA2],a
+	ld a,HIGH(_SCRN0)
+	ldh [rHDMA3],a
+	ld a,$3F
+	ldh [rHDMA5],a
 	; fallthrough
 Joypad:
 .poll
@@ -117,26 +146,67 @@ Joypad:
 .pressDetected
 	ldh [hButtonPress],a ; remember the button press, 0-1-2-3-4-5-6-7 -> Down-Up-Left-Right-Start-Select-B-A
 	; everything should mostly be set up, we just need to get the timer and vblank interrupt going
-	ld a,LCDCF_ON
+	ld a,LCDCF_ON|LCDCF_BG8000
 	ldh [rLCDC],a ; enable LCD
 	ld a,(256-53-4)
 	ldh [rDIV],a ; reset DIV
 	ldh [rTIMA],a ; set TIMA to 200
 	ld a,~(IEF_TIMER|IEF_VBLANK)
+	ei
 	ldh [rIF],a
 .wait
-	ei
 	halt ; interrupts will handle it from here
-	di
-	ldh a,[hBeeps]
-	sub 5
-	jr nz,.wait
-	jp EntryPoint
+	jr .wait
 
 VBlank:
-	reti ; handle this later
+; we got 121 cycles left over from the Timer, let's not waste too much here
+	ld c,LOW(rBCPS)
+	ld a,BCPSF_AUTOINC
+	ldh [c],a
+	inc c
+	ldh a,[hFlashCooldown]
+	and a
+	jr z,.whiteOnBlack
+	ld hl,hFlashCooldown
+	dec [hl]
+	jr nz,.blackOnWhite
+	ldh a,[hBeeps]
+	sub 5
+	jp z,EntryPoint
+.blackOnWhite
+	ld a,h
+	ldh [c],a
+	ldh [c],a
+	cpl
+	ldh [c],a
+	ldh [c],a
+	jr .updateVisualTimer
+.whiteOnBlack
+	; xor a
+	ldh [c],a
+	ldh [c],a
+	cpl
+	ldh [c],a
+	ldh [c],a
+; fallthrough
+.updateVisualTimer
+	ld hl,vTimer
+	ldh a,[hTime]
+	ld [hli],a
+	ld a,$FE ; "."
+	ld [hli],a
+	ldh a,[hTime+1]
+	ld [hli],a
+	ldh a,[hTime+2]
+	ld [hl],a
+	reti
+	
+
 Timer:
-; we only got 212 cycles to do stuff, so make it count
+; we only got 212 cycles maximum to do stuff, so make it count
+	push af
+	push bc
+	push hl
 	lb bc,1,LOW(hTime+2)
 	ldh a,[c]
 	add b
@@ -183,20 +253,26 @@ Timer:
 	cp [hl]
 	jr nz,.noBeep
 	; +22 cycles (146 cycles left)
-	ld c,LOW(hBeeps)
-	ldh a,[c]
-	inc a
-	ldh [c],a
-	ld a,$F1
-	ldh [rNR12],a
-	ld a,$BF
-	ldh [rNR14],a
-	; +17 cycles (129 cycles left)
+	ld hl,hBeeps
+	inc [hl]
+	inc l
+	ld [hl],$03 ; 3 frames of flash cooldown	
+	; TODO: should this be more?
+	ld l,LOW(rNR12)
+	ld [hl],$F1
+	inc l
+	inc l
+	ld [hl],$BF
+	; +20 cycles (126 cycles left)
 .noBeep
+	pop hl
+	pop bc
+	pop af
 	reti
+	; +4 cycles (121 cycles left)
 
 
-SECTION "Beep Intervals Table", ROM0[$300]
+SECTION "Beep Intervals Table", ROM0,ALIGN[8]
 BeepIntervalsTable:
 	dw BeepIntervalsDown
 	dw BeepIntervalsUp
@@ -207,7 +283,7 @@ BeepIntervalsTable:
 	dw BeepIntervalsB
 	dw BeepIntervalsA
 	
-SECTION "Beep Intervals", ROM0[$310]
+SECTION "Beep Intervals", ROM0,ALIGN[8]
 BeepIntervals:
 BeepIntervalsDown:
 	db $11,$50,$00, $11,$85,$00, $12,$20,$00, $12,$55,$00, $12,$90,$00 ; down
@@ -226,9 +302,19 @@ BeepIntervalsB:
 BeepIntervalsA:
 	db $11,$50,$00, $11,$85,$00, $12,$20,$00, $12,$55,$00, $12,$90,$00 ; a
 	
+SECTION "Font", ROM0,ALIGN[8]
+FontTiles:
+INCBIN "font.2bpp"
+FontTilesEnd:
+
+SECTION "Default SCRN0", ROM0,ALIGN[8]
+DefaultSCRN0:
+	ds $400, $FF
 
 
-
+SECTION "Visual Timer", VRAM[$9908]
+vTimer:
+	ds 4
 
 
 ; This ensures that the stack is at the very end of WRAM
@@ -238,9 +324,11 @@ wStackBottom::
 
 
 SECTION "Vars", HRAM
+hButtonPress:
+	ds 1
 hBeeps:
 	ds 1
-hButtonPress:
+hFlashCooldown
 	ds 1
 hTime:
 	ds 3
