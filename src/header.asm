@@ -320,7 +320,7 @@ hButtonPress:
 	ds 1
 hBeeps:
 	ds 1
-hFlashCooldown
+hFlashCooldown:
 	ds 1
 hTime:
 	ds 3
