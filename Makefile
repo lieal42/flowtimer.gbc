@@ -19,7 +19,7 @@ ifneq ($(shell which rm),)
     # POSIX OSes
     RM_RF := rm -rf
     MKDIR_P := mkdir -p
-    PY :=
+    PY := python3
     filesize = echo 'NB_PB$2_BLOCKS equ (' `wc -c $1 | cut -d ' ' -f 1` ' + $2 - 1) / $2'
 else
     # Windows outside of a POSIX env (Cygwin, MSYS2, etc.)
